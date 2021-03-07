@@ -18,12 +18,11 @@ Creates multi-threaded workers that will:
 
 ## Performance metrics
 Check on your own system (adjust the number of threads):
-- Ryzen 9 3950X (32 logical cores) on Windows 10 using Docker Desktop single instance of Aerospike server:
-    - RECORD_CHECK_ENABLED=false - atomic operations: 16K operations per second
-    - RECORD_CHECK_ENABLED=true - atomic operations with post record check: 8K operations per second
+- Ryzen 9 3950X (1 logical cores) on Windows 10 using Docker Desktop single instance of Aerospike server:
     - RECORD_CHECK_ENABLED=false 
-       - atomic operations using CDT: 16K operations per second
-       - atomic operations using custom: 833 
+        - TEST_MODE = BinMap (uses Aerospike CDT): 1.7K operations per second
+        - TEST_MODE = Json (serialise Java Objects to Json with client side read-update): 0.8k operations per second
+        - TEST_MODE = Blob (serialise Java Objects to Binary with client side read-update): 0.8k operations per second
 
 ## Usage
 ```
