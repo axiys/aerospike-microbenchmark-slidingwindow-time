@@ -7,6 +7,7 @@ import com.aerospike.client.policy.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.*;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -15,8 +16,17 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class Main {
+
     private static boolean RECORD_CHECK_ENABLED = false;
-    private static boolean USE_MAP_BIN = true;
+
+    public enum TestMode {
+        BinMap,
+        Json,
+        Blob
+    }
+
+    private static TestMode TEST_MODE = TestMode.BinMap;
+
     private static int NUMBER_OF_THREADS = 1;
     private static int NUMBER_OF_OPERATIONS_PER_THREAD = 10000;
 
@@ -53,6 +63,7 @@ public class Main {
         clientPolicy.writePolicyDefault.commitLevel = CommitLevel.COMMIT_ALL;
         clientPolicy.writePolicyDefault.socketTimeout = 500;
         clientPolicy.writePolicyDefault.totalTimeout = 500;
+        clientPolicy.writePolicyDefault.expiration = -1;
 
         // Connect to the cluster.
         AerospikeClient client = new AerospikeClient(clientPolicy, new Host("127.0.0.1", 3000));
@@ -80,7 +91,7 @@ public class Main {
 
                 do {
 
-                    if (USE_MAP_BIN) {
+                    if (TEST_MODE == TestMode.BinMap) {
                         // This is the default list of transactions (empty) per timestamp (key)
                         List<Value> transactions = new ArrayList<>();
                         Map<Value, Value> initMap = new HashMap<>();
@@ -115,28 +126,48 @@ public class Main {
                             }
                         }
                     } else {
-                        Record record_to_update = client.get(new Policy(), key, mapBinName);
+                        Record recordToUpdate = client.get(new Policy(), key, mapBinName);
 
-                        Map<Long, List<String>> map;
+                        HashMap<Long, ArrayList<String>> map;
 
                         WritePolicy writePolicy = new WritePolicy();
                         writePolicy.commitLevel = CommitLevel.COMMIT_ALL;
                         writePolicy.expiration = -1;
 
-                        if (record_to_update == null || !record_to_update.bins.containsKey(mapBinName)) {
+                        if (recordToUpdate == null || !recordToUpdate.bins.containsKey(mapBinName)) {
                             map = new HashMap<>();
                         } else {
-                            String json = record_to_update.getString(mapBinName);
-                            TypeReference<Map<Long, List<String>>> typeRef = new TypeReference<Map<Long, List<String>>>() {
-                            };
-                            map = mapper.readValue(json, typeRef);
+                            if (TEST_MODE == TestMode.Json) {
+                                String json = recordToUpdate.getString(mapBinName);
+                                TypeReference<HashMap<Long, ArrayList<String>>> typeRef = new TypeReference<HashMap<Long, ArrayList<String>>>() {
+                                };
+                                map = mapper.readValue(json, typeRef);
+                            } else if (TEST_MODE == TestMode.Blob) {
+                                byte[] blob = (byte[]) recordToUpdate.getValue(mapBinName);
+                                ByteArrayInputStream bis = null;
+                                try {
+                                    bis = new ByteArrayInputStream(blob);
+                                    ObjectInputStream in = new ObjectInputStream(bis);
+                                    Object o = in.readObject();
+                                    map = (HashMap<Long, ArrayList<String>>) o;
+                                } finally {
+                                    try {
+                                        bis.close();
+                                    } catch (IOException ex) {
+                                        // ignore close exception
+                                    }
+                                }
+                            } else {
+                                throw new Exception("Unknown TEST_MODE");
+                            }
+
 
                             writePolicy.generationPolicy = GenerationPolicy.EXPECT_GEN_EQUAL;
-                            writePolicy.generation = record_to_update.generation;
+                            writePolicy.generation = recordToUpdate.generation;
                         }
 
                         if (!map.containsKey(transactionTimestamp)) {
-                            map.put(transactionTimestamp, Collections.singletonList(transactionId));
+                            map.put(transactionTimestamp, new ArrayList<>(Collections.singletonList(transactionId)));
                         } else {
                             map.get(transactionTimestamp).add(transactionId);
                         }
@@ -144,8 +175,29 @@ public class Main {
                         map.keySet().stream().sorted().filter(timestampKey -> timestampKey < transactionTimestampLowWatermark).forEach(map::remove);
 
                         // Update a key-value in
-                        String json = mapper.writeValueAsString(map);
-                        Bin bin_to_update = new Bin(mapBinName, json);
+                        Bin bin_to_update;
+                        if (TEST_MODE == TestMode.Json) {
+                            String json = mapper.writeValueAsString(map);
+                            bin_to_update = new Bin(mapBinName, json);
+                        } else if (TEST_MODE == TestMode.Blob) {
+                            ByteArrayOutputStream bos = null;
+                            try {
+                                bos = new ByteArrayOutputStream();
+                                ObjectOutputStream out = new ObjectOutputStream(bos);
+                                out.writeObject(map);
+                                out.flush();
+                                byte[] blob = bos.toByteArray();
+                                bin_to_update = new Bin(mapBinName, blob);
+                            } finally {
+                                try {
+                                    bos.close();
+                                } catch (IOException ex) {
+                                    // ignore close exception
+                                }
+                            }
+                        } else {
+                            throw new Exception("Unknown TEST_MODE");
+                        }
 
                         // Repeat operation on hot key
                         retry = false;
@@ -169,17 +221,34 @@ public class Main {
 
                 if (RECORD_CHECK_ENABLED) {
                     Record updatedRecord = client.get(new Policy(), key, mapBinName);
-                    Map<Long, List<String>> slidingWindowMap;
+                    HashMap<Long, ArrayList<String>> slidingWindowMap;
 
-                    if (USE_MAP_BIN) {
+                    if (TEST_MODE == TestMode.BinMap) {
                         // Check that we have our specific transaction in the list at the specific timestamp (key)
                         // RATIONALE: other threads may have added their own transaction id at the same time
-                        slidingWindowMap = (Map<Long, List<String>>) updatedRecord.getMap(mapBinName);
-                    } else {
+                        slidingWindowMap = (HashMap<Long, ArrayList<String>>) updatedRecord.getMap(mapBinName);
+                    } else if (TEST_MODE == TestMode.Json) {
                         String json = updatedRecord.getString(mapBinName);
-                        TypeReference<Map<Long, List<String>>> typeRef = new TypeReference<Map<Long, List<String>>>() {
+                        TypeReference<HashMap<Long, ArrayList<String>>> typeRef = new TypeReference<HashMap<Long, ArrayList<String>>>() {
                         };
                         slidingWindowMap = mapper.readValue(json, typeRef);
+                    } else if (TEST_MODE == TestMode.Blob) {
+                        byte[] blob = (byte[]) updatedRecord.getValue(mapBinName);
+                        ByteArrayInputStream bis = null;
+                        try {
+                            bis = new ByteArrayInputStream(blob);
+                            ObjectInputStream in = new ObjectInputStream(bis);
+                            Object o = in.readObject();
+                            slidingWindowMap = (HashMap<Long, ArrayList<String>>) o;
+                        } finally {
+                            try {
+                                bis.close();
+                            } catch (IOException ex) {
+                                // ignore close exception
+                            }
+                        }
+                    } else {
+                        throw new Exception("Unknown TEST_MODE");
                     }
 
                     // - Check: Does out transaction exist?
