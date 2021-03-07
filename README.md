@@ -7,6 +7,7 @@ Creates multi-threaded workers that will:
 * create a sliding window bin holding a map timestamp as key associated with a list of transaction ids
 * for a specific timestamp (key) put a transaction into a list
 * check that the transaction exists in the list
+* Compare with doing your own using custom: Maps, Lists and JSON
 
 ## Dependencies
 * Maven
@@ -20,6 +21,9 @@ Check on your own system (adjust the number of threads):
 - Ryzen 9 3950X (32 logical cores) on Windows 10 using Docker Desktop single instance of Aerospike server:
     - RECORD_CHECK_ENABLED=false - atomic operations: 16K operations per second
     - RECORD_CHECK_ENABLED=true - atomic operations with post record check: 8K operations per second
+    - RECORD_CHECK_ENABLED=false 
+       - atomic operations using CDT: 16K operations per second
+       - atomic operations using custom: 833 
 
 ## Usage
 ```
