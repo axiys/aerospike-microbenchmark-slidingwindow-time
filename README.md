@@ -28,6 +28,7 @@ Check on your own system (adjust the number of threads):
 ```
 docker-compose up -d
 mvn install
+mvn exec:java -D"exec.mainClass"="com.aerospike.microbenchmark.Main"
 ```
 
 ## Data Model
