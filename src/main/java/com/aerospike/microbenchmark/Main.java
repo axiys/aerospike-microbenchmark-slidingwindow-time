@@ -74,7 +74,6 @@ public class Main {
             ListPolicy listPolicy = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
 
             Key key = new Key("test", "demo", "mapkey1");
-            client.delete(null, key);
             String mapBinName = "mapbin1";
 
             ObjectMapper mapper = new ObjectMapper();
