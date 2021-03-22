@@ -27,8 +27,8 @@ public class Main {
 
     private static TestMode TEST_MODE = TestMode.BinMap;
 
-    private static int NUMBER_OF_THREADS = 1;
-    private static int NUMBER_OF_OPERATIONS_PER_THREAD = 10000;
+    private static int NUMBER_OF_THREADS = 2 * 16; /// Use: lscpu for number of CPUs eg. 16
+    private static int NUMBER_OF_OPERATIONS_PER_THREAD = 100000;
 
     private static Random random = new Random(LocalDateTime.now().getNano() * LocalDateTime.now().getSecond());
 
@@ -73,7 +73,7 @@ public class Main {
             MapPolicy mapPolicy = new MapPolicy(MapOrder.KEY_ORDERED, MapWriteFlags.CREATE_ONLY | MapWriteFlags.NO_FAIL);
             ListPolicy listPolicy = new ListPolicy(ListOrder.UNORDERED, ListWriteFlags.ADD_UNIQUE | ListWriteFlags.NO_FAIL);
 
-            Key key = new Key("test", "demo", "mapkey1");
+            Key key = new Key("test", "demo", "mapkey_" + UUID.randomUUID());
             String mapBinName = "mapbin1";
 
             ObjectMapper mapper = new ObjectMapper();
@@ -220,17 +220,20 @@ public class Main {
 
                 if (RECORD_CHECK_ENABLED) {
                     Record updatedRecord = client.get(new Policy(), key, mapBinName);
-                    HashMap<Long, ArrayList<String>> slidingWindowMap;
+                    Map<Long, List<String>> slidingWindowMap;
 
                     if (TEST_MODE == TestMode.BinMap) {
                         // Check that we have our specific transaction in the list at the specific timestamp (key)
                         // RATIONALE: other threads may have added their own transaction id at the same time
-                        slidingWindowMap = (HashMap<Long, ArrayList<String>>) updatedRecord.getMap(mapBinName);
+                        Map<Long, List<String>> map = (Map<Long, List<String>>) updatedRecord.getMap(mapBinName);
+                        slidingWindowMap = map;
+
                     } else if (TEST_MODE == TestMode.Json) {
                         String json = updatedRecord.getString(mapBinName);
-                        TypeReference<HashMap<Long, ArrayList<String>>> typeRef = new TypeReference<HashMap<Long, ArrayList<String>>>() {
+                        TypeReference<Map<Long, List<String>>> typeRef = new TypeReference<Map<Long, List<String>>>() {
                         };
                         slidingWindowMap = mapper.readValue(json, typeRef);
+
                     } else if (TEST_MODE == TestMode.Blob) {
                         byte[] blob = (byte[]) updatedRecord.getValue(mapBinName);
                         ByteArrayInputStream bis = null;
@@ -238,7 +241,8 @@ public class Main {
                             bis = new ByteArrayInputStream(blob);
                             ObjectInputStream in = new ObjectInputStream(bis);
                             Object o = in.readObject();
-                            slidingWindowMap = (HashMap<Long, ArrayList<String>>) o;
+                            slidingWindowMap = (Map<Long, List<String>>) o;
+
                         } finally {
                             try {
                                 bis.close();
