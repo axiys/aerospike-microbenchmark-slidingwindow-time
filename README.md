@@ -29,12 +29,29 @@ Check on your own system (adjust the number of threads):
     - TEST_MODE = Blob (serialise Java Objects to Binary with client side read-update): 6k operations per second
     
 ## Usage
+Start Aerospike service using docker (expose port 3000 locally) 
 ```
+docker network create backend
 docker-compose up -d
+```
+Build benchmark
+```
 mvn install
 mvn package
-mvn exec:java -D"exec.mainClass"="com.aerospike.microbenchmark.Main"
 ```
+Default run (32 threads, 10,000 operations per thread):
+```
+mvn test -Pbenchmark
+```
+Default run (1 threads, 10,000 operations per thread):
+```
+mvn test -Pbenchmark -Dexec.args="-z 1 -c 10000"
+```
+NOTE: To get then number of CPUs on Unbuntu use:
+```
+lscpu | grep "^CPU(s):"
+```
+Max hyper threads is number of CPUs x 2 
 
 ## Data Model
 To examine the structure of the bin perform this AQL command:

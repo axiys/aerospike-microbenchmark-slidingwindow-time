@@ -10,12 +10,11 @@ services:
     networks:
       - backend
     labels:
-        com.aerospike.cluster: "myproject"
+        com.aerospike.cluster: "benchmark"
     command: [ "--config-file","/run/secrets/aerospike.conf"]
     secrets:
     - source: asconf
       target: aerospike.conf
-      mode: 0440
 
 networks:
   backend:
