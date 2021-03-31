@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 public class Main {
 
-    private static boolean RECORD_CHECK_ENABLED = false;
+    private static boolean DEFAULT_VALIDATE_RECORD_WRITE = false;
 
     public enum TestMode {
         BinMap,
@@ -49,6 +49,10 @@ public class Main {
         numberOfThreads.setRequired(false);
         options.addOption(numberOfThreads);
 
+        Option validateWrite = new Option("V", "validate", false, "Validates the write by checking the record");
+        validateWrite.setRequired(false);
+        options.addOption(validateWrite);
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
         CommandLine cmd = null;
@@ -63,6 +67,7 @@ public class Main {
 
         int threadCount = cmd != null ? Integer.parseInt(cmd.getOptionValue("threads", String.valueOf(DEFAULT_NUMBER_OF_THREADS))) : DEFAULT_NUMBER_OF_THREADS;
         int operationsPerThreadCount = cmd != null ? Integer.parseInt(cmd.getOptionValue("operations", String.valueOf(DEFAULT_NUMBER_OF_OPERATIONS_PER_THREAD))) : DEFAULT_NUMBER_OF_OPERATIONS_PER_THREAD;
+        boolean validate = cmd != null ? cmd.hasOption("validate") : DEFAULT_VALIDATE_RECORD_WRITE;
 
         /////////////////
         // Run benchmark
@@ -74,7 +79,7 @@ public class Main {
         ExecutorService es = Executors.newCachedThreadPool();
         int n = threadCount;
         while (n-- > 0) {
-            es.execute(new BenchmarkWorker(operationsPerThreadCount));
+            es.execute(new BenchmarkWorker(operationsPerThreadCount, validate));
         }
         es.shutdown();
         try {
@@ -95,9 +100,11 @@ public class Main {
 
     static class BenchmarkWorker implements Runnable {
         private int operationsPerThreadCount;
+        private boolean validate;
 
-        public BenchmarkWorker(int operationsPerThreadCount) {
+        public BenchmarkWorker(int operationsPerThreadCount, boolean validate) {
             this.operationsPerThreadCount = operationsPerThreadCount;
+            this.validate = validate;
         }
 
         public void run() {
@@ -124,7 +131,7 @@ public class Main {
 
                 ObjectMapper mapper = new ObjectMapper();
 
-                int n = operationsPerThreadCount;
+                int n = this.operationsPerThreadCount;
                 while (n-- > 0) {
                     long transactionTimestamp = Instant.now().toEpochMilli();
                     String transactionId = UUID.randomUUID().toString();
@@ -264,7 +271,7 @@ public class Main {
                     }
                     while (retry);
 
-                    if (RECORD_CHECK_ENABLED) {
+                    if (this.validate) {
                         Record updatedRecord = client.get(new Policy(), key, mapBinName);
                         Map<Long, List<String>> slidingWindowMap;
 

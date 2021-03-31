@@ -47,6 +47,10 @@ Default run (1 threads, 10,000 operations per thread):
 ```
 mvn test -Pbenchmark -Dexec.args="-z 1 -c 10000"
 ```
+To validate record write using option -V:
+```
+mvn test -Pbenchmark -Dexec.args="-z 1 -c 10000 -V"
+```
 NOTE: To get then number of CPUs on Unbuntu use:
 ```
 lscpu | grep "^CPU(s):"
